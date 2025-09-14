@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import random
+import json
 
 # Tentar importar plotly com tratamento de erro
 try:
@@ -15,15 +16,23 @@ except ImportError:
     st.error("⚠️ Plotly não está instalado. Instale com: pip install plotly")
     st.stop()
 
+# Tentar importar gspread
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials
+    GSHEETS_AVAILABLE = True
+except ImportError:
+    GSHEETS_AVAILABLE = False
+
 # Configuração da página
 st.set_page_config(
-    page_title="Dashboard Analytics",
+    page_title="Dashboard Analytics - Google Sheets",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# CSS personalizado para replicar o estilo Looker
+# CSS personalizado
 st.markdown("""
 <style>
     .main > div {
@@ -31,7 +40,7 @@ st.markdown("""
     }
     
     .header-container {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(90deg, #34A853 0%, #4285F4 100%);
         padding: 1.5rem 2rem;
         border-radius: 8px;
         margin-bottom: 2rem;
@@ -52,12 +61,12 @@ st.markdown("""
         color: white;
     }
     
-    .filter-container {
-        background-color: #f8f9fa;
-        padding: 1rem 2rem;
+    .config-section {
+        background-color: #e8f5e8;
+        padding: 1.5rem;
         border-radius: 8px;
         margin-bottom: 2rem;
-        border: 1px solid #e9ecef;
+        border-left: 4px solid #34A853;
     }
     
     .metric-card {
@@ -82,13 +91,20 @@ st.markdown("""
         margin: 0.5rem 0 0 0;
     }
     
-    .upload-section {
-        background-color: #e3f2fd;
-        padding: 2rem;
+    .sheets-info {
+        background-color: #fff3cd;
+        padding: 1rem;
         border-radius: 8px;
-        margin-bottom: 2rem;
-        border: 2px dashed #2196f3;
-        text-align: center;
+        border: 1px solid #ffeaa7;
+        margin-bottom: 1rem;
+    }
+    
+    .success-box {
+        background-color: #d1edff;
+        padding: 1rem;
+        border-radius: 8px;
+        border: 1px solid #0084ff;
+        margin-bottom: 1rem;
     }
     
     .stDataFrame {
@@ -96,104 +112,229 @@ st.markdown("""
         border-radius: 8px;
         overflow: hidden;
     }
-    
-    .chart-container {
-        background-color: white;
-        padding: 1rem;
-        border-radius: 8px;
-        border: 1px solid #e9ecef;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
 </style>
 """, unsafe_allow_html=True)
 
-# Função para carregar dados de exemplo
-@st.cache_data
-def gerar_dados_exemplo():
-    """Gera dados de exemplo quando não há arquivo carregado"""
-    np.random.seed(42)
-    random.seed(42)
+def configurar_google_sheets():
+    """Interface para configurar conexão com Google Sheets"""
+    st.markdown('<div class="config-section">', unsafe_allow_html=True)
+    st.markdown("### 🔧 Configuração do Google Sheets")
     
+    # Verificar se gspread está disponível
+    if not GSHEETS_AVAILABLE:
+        st.error("❌ Biblioteca gspread não está instalada.")
+        st.code("pip install gspread google-auth")
+        return None, None
+    
+    # Métodos de autenticação
+    metodo_auth = st.radio(
+        "Método de autenticação:",
+        ["Credenciais JSON (Recomendado)", "URL Pública do Google Sheets"],
+        help="Escolha como conectar ao Google Sheets"
+    )
+    
+    if metodo_auth == "Credenciais JSON (Recomendado)":
+        st.markdown("""
+        **📋 Passo a passo para configurar:**
+        1. Acesse [Google Cloud Console](https://console.cloud.google.com/)
+        2. Crie um novo projeto ou selecione um existente
+        3. Ative a API Google Sheets API e Google Drive API
+        4. Crie uma conta de serviço (Service Account)
+        5. Baixe o arquivo JSON de credenciais
+        6. Compartilhe sua planilha com o email da conta de serviço
+        """)
+        
+        # Upload do arquivo de credenciais
+        credentials_file = st.file_uploader(
+            "Faça upload do arquivo JSON de credenciais:",
+            type=['json'],
+            help="Arquivo JSON baixado do Google Cloud Console"
+        )
+        
+        spreadsheet_url = st.text_input(
+            "URL da planilha do Google Sheets:",
+            placeholder="https://docs.google.com/spreadsheets/d/SEU_SPREADSHEET_ID/edit",
+            help="Cole a URL completa da sua planilha"
+        )
+        
+        sheet_name = st.text_input(
+            "Nome da aba (opcional):",
+            value="Sheet1",
+            help="Nome da aba da planilha (deixe Sheet1 se for a primeira aba)"
+        )
+        
+        if credentials_file and spreadsheet_url:
+            try:
+                # Carregar credenciais
+                credentials_info = json.load(credentials_file)
+                
+                return {
+                    'method': 'credentials',
+                    'credentials': credentials_info,
+                    'url': spreadsheet_url,
+                    'sheet_name': sheet_name
+                }
+            except Exception as e:
+                st.error(f"❌ Erro ao carregar credenciais: {str(e)}")
+                return None
+    
+    else:  # URL Pública
+        st.markdown("""
+        **📋 Para usar URL pública:**
+        1. Abra sua planilha no Google Sheets
+        2. Clique em "Compartilhar" → "Alterar para qualquer pessoa com o link"
+        3. Cole a URL abaixo
+        """)
+        
+        spreadsheet_url = st.text_input(
+            "URL pública da planilha:",
+            placeholder="https://docs.google.com/spreadsheets/d/SEU_SPREADSHEET_ID/edit",
+            help="A planilha deve estar pública (qualquer pessoa com o link pode visualizar)"
+        )
+        
+        sheet_name = st.text_input(
+            "Nome da aba:",
+            value="Sheet1",
+            help="Nome da aba da planilha"
+        )
+        
+        if spreadsheet_url:
+            return {
+                'method': 'public',
+                'url': spreadsheet_url,
+                'sheet_name': sheet_name
+            }
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    return None
+
+@st.cache_data(ttl=300)  # Cache por 5 minutos
+def carregar_dados_sheets(config):
+    """Carrega dados do Google Sheets"""
+    try:
+        if config['method'] == 'credentials':
+            # Usar credenciais de conta de serviço
+            scope = [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
+            ]
+            
+            credentials = Credentials.from_service_account_info(
+                config['credentials'], 
+                scopes=scope
+            )
+            
+            gc = gspread.authorize(credentials)
+            
+            # Extrair ID da planilha da URL
+            if '/d/' in config['url']:
+                sheet_id = config['url'].split('/d/')[1].split('/')[0]
+            else:
+                raise ValueError("URL inválida")
+            
+            # Abrir planilha
+            spreadsheet = gc.open_by_key(sheet_id)
+            worksheet = spreadsheet.worksheet(config['sheet_name'])
+            
+            # Converter para DataFrame
+            data = worksheet.get_all_records()
+            df = pd.DataFrame(data)
+            
+        else:  # Método público usando pandas
+            # Converter URL para formato CSV
+            if '/edit' in config['url']:
+                csv_url = config['url'].replace('/edit', '/export?format=csv')
+                if config['sheet_name'] != 'Sheet1':
+                    csv_url += f"&gid=0"  # Para abas específicas, seria necessário o GID
+            else:
+                csv_url = config['url']
+            
+            # Ler como CSV
+            df = pd.read_csv(csv_url)
+        
+        # Limpar dados
+        df = df.dropna(how='all')  # Remove linhas completamente vazias
+        df.columns = df.columns.str.strip()  # Remove espaços dos nomes das colunas
+        
+        return df
+        
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar dados do Google Sheets: {str(e)}")
+        return None
+
+def gerar_dados_exemplo():
+    """Gera dados de exemplo"""
+    np.random.seed(42)
     data = []
-    for i in range(1000):
+    
+    for i in range(500):
         data.append({
-            'data': datetime.now() - timedelta(days=random.randint(0, 365)),
-            'categoria': random.choice(['Tecnologia', 'Vendas', 'Marketing', 'RH', 'Financeiro']),
-            'produto': random.choice(['Produto A', 'Produto B', 'Produto C', 'Produto D']),
-            'regiao': random.choice(['Norte', 'Sul', 'Leste', 'Oeste', 'Centro']),
-            'valor': random.uniform(100, 10000),
-            'quantidade': random.randint(1, 100),
-            'responsavel': random.choice(['João', 'Maria', 'Pedro', 'Ana', 'Carlos'])
+            'Data': (datetime.now() - timedelta(days=random.randint(0, 365))).strftime('%Y-%m-%d'),
+            'Categoria': random.choice(['Vendas', 'Marketing', 'Suporte', 'Desenvolvimento', 'RH']),
+            'Produto': random.choice(['Produto A', 'Produto B', 'Produto C', 'Produto D']),
+            'Região': random.choice(['Norte', 'Sul', 'Leste', 'Oeste', 'Centro']),
+            'Valor': round(random.uniform(100, 5000), 2),
+            'Quantidade': random.randint(1, 50),
+            'Responsável': random.choice(['Ana Silva', 'João Santos', 'Maria Oliveira', 'Pedro Costa'])
         })
     
     return pd.DataFrame(data)
 
-# Função para processar arquivo carregado
-def processar_arquivo(arquivo):
-    """Processa arquivo CSV ou Excel carregado"""
-    try:
-        if arquivo.name.endswith('.csv'):
-            df = pd.read_csv(arquivo, encoding='utf-8')
-        elif arquivo.name.endswith(('.xlsx', '.xls')):
-            df = pd.read_excel(arquivo)
-        else:
-            st.error("⚠️ Formato não suportado. Use arquivos .csv, .xlsx ou .xls")
-            return None
-            
-        return df
-    except Exception as e:
-        st.error(f"❌ Erro ao carregar arquivo: {str(e)}")
-        return None
-
-# Função para detectar colunas por tipo
 def detectar_colunas(df):
-    """Detecta automaticamente os tipos de colunas"""
+    """Detecta tipos de colunas automaticamente"""
     colunas_numericas = df.select_dtypes(include=[np.number]).columns.tolist()
     colunas_data = []
-    colunas_texto = []
+    colunas_texto = df.select_dtypes(include=['object']).columns.tolist()
     
-    for col in df.columns:
-        # Tentar detectar colunas de data
-        if df[col].dtype == 'object':
-            try:
-                pd.to_datetime(df[col].head(10))
-                colunas_data.append(col)
-            except:
-                colunas_texto.append(col)
+    # Tentar detectar colunas de data
+    for col in colunas_texto.copy():
+        try:
+            pd.to_datetime(df[col].head(10))
+            colunas_data.append(col)
+            colunas_texto.remove(col)
+        except:
+            continue
     
     return colunas_numericas, colunas_data, colunas_texto
 
 # Header principal
 st.markdown("""
 <div class="header-container">
-    <h1 class="header-title">📊 Dashboard Analytics Personalizado</h1>
-    <p class="header-subtitle">Importe seus dados CSV/Excel e crie visualizações interativas</p>
+    <h1 class="header-title">📊 Dashboard Analytics - Google Sheets</h1>
+    <p class="header-subtitle">Conecte sua planilha do Google Sheets e crie visualizações em tempo real</p>
 </div>
 """, unsafe_allow_html=True)
 
-# Seção de upload de arquivo
-st.markdown('<div class="upload-section">', unsafe_allow_html=True)
-st.markdown("### 📁 Importar Dados")
-st.markdown("Faça upload do seu arquivo CSV ou Excel para começar a análise")
-
-uploaded_file = st.file_uploader(
-    "Escolha seu arquivo",
-    type=['csv', 'xlsx', 'xls'],
-    help="Suporte para arquivos CSV, XLSX e XLS"
-)
-st.markdown('</div>', unsafe_allow_html=True)
+# Configuração do Google Sheets
+config = configurar_google_sheets()
 
 # Carregar dados
-if uploaded_file is not None:
-    df = processar_arquivo(uploaded_file)
+df = None
+if config:
+    with st.spinner("🔄 Carregando dados do Google Sheets..."):
+        df = carregar_dados_sheets(config)
+        
     if df is not None:
-        st.success(f"✅ Arquivo '{uploaded_file.name}' carregado com sucesso!")
-        st.info(f"📊 Dados carregados: {len(df)} linhas e {len(df.columns)} colunas")
-else:
-    df = gerar_dados_exemplo()
-    st.info("📋 Usando dados de exemplo. Faça upload do seu arquivo para usar dados reais.")
+        st.markdown('<div class="success-box">', unsafe_allow_html=True)
+        st.success(f"✅ Dados carregados com sucesso! {len(df)} linhas e {len(df.columns)} colunas")
+        
+        # Botão para atualizar dados
+        if st.button("🔄 Atualizar Dados", help="Recarrega os dados da planilha"):
+            st.cache_data.clear()
+            st.rerun()
+        
+        st.markdown('</div>', unsafe_allow_html=True)
 
-if df is not None:
+# Se não conseguiu carregar do Sheets, usar dados de exemplo
+if df is None:
+    st.markdown('<div class="sheets-info">', unsafe_allow_html=True)
+    st.warning("📋 Configure a conexão com Google Sheets acima ou veja os dados de exemplo abaixo")
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    if st.checkbox("🔍 Mostrar dados de exemplo"):
+        df = gerar_dados_exemplo()
+
+if df is not None and not df.empty:
     # Detectar tipos de colunas
     cols_numericas, cols_data, cols_texto = detectar_colunas(df)
     
@@ -203,48 +344,48 @@ if df is not None:
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.write("**Colunas Numéricas:**")
-            for col in cols_numericas:
+            st.write("**📊 Colunas Numéricas:**")
+            for col in cols_numericas[:5]:  # Limitar a 5
                 st.write(f"• {col}")
         
         with col2:
-            st.write("**Colunas de Data:**")
-            for col in cols_data:
+            st.write("**📅 Colunas de Data:**")
+            for col in cols_data[:5]:
                 st.write(f"• {col}")
         
         with col3:
-            st.write("**Colunas de Texto:**")
-            for col in cols_texto:
+            st.write("**📝 Colunas de Texto:**")
+            for col in cols_texto[:5]:
                 st.write(f"• {col}")
 
     # Sidebar com configurações
-    st.sidebar.header("⚙️ Configurações do Dashboard")
+    st.sidebar.header("⚙️ Configurações de Análise")
     
-    # Seleção de colunas para análise
+    # Seleção de colunas principais
     if cols_numericas:
         coluna_valor = st.sidebar.selectbox(
             "💰 Coluna de Valor Principal",
             cols_numericas,
-            help="Selecione a coluna numérica principal para análise"
+            help="Selecione a coluna numérica para análise"
         )
     else:
-        st.sidebar.warning("⚠️ Nenhuma coluna numérica encontrada")
         coluna_valor = None
+        st.sidebar.warning("⚠️ Nenhuma coluna numérica encontrada")
     
     if cols_texto:
         coluna_categoria = st.sidebar.selectbox(
             "📊 Coluna de Categoria",
             cols_texto,
-            help="Selecione a coluna para agrupar os dados"
+            help="Coluna para agrupar os dados"
         )
     else:
         coluna_categoria = None
     
     if len(cols_texto) > 1:
         coluna_subcategoria = st.sidebar.selectbox(
-            "🏷️ Coluna de Subcategoria (Opcional)",
+            "🏷️ Subcategoria (Opcional)",
             ["Nenhuma"] + cols_texto,
-            help="Selecione uma segunda dimensão para análise"
+            help="Segunda dimensão para análise"
         )
         if coluna_subcategoria == "Nenhuma":
             coluna_subcategoria = None
@@ -255,23 +396,22 @@ if df is not None:
     st.sidebar.markdown("### 🔍 Filtros")
     
     filtros_ativos = {}
-    for col in cols_texto[:3]:  # Primeiras 3 colunas de texto para filtros
+    for col in cols_texto[:3]:  # Primeiros 3 campos de texto
         valores_unicos = df[col].unique()
-        if len(valores_unicos) <= 50:  # Só mostrar filtro se não tiver muitas opções
+        if len(valores_unicos) <= 20:  # Só mostrar se não tiver muitas opções
             valores_selecionados = st.sidebar.multiselect(
                 f"Filtrar por {col}",
                 valores_unicos,
                 default=valores_unicos
             )
             filtros_ativos[col] = valores_selecionados
-
+    
     # Aplicar filtros
     df_filtrado = df.copy()
     for col, valores in filtros_ativos.items():
-        if valores:  # Se há valores selecionados
+        if valores:
             df_filtrado = df_filtrado[df_filtrado[col].isin(valores)]
     
-    # Verificar se há dados após filtros
     if df_filtrado.empty:
         st.warning("⚠️ Nenhum dado encontrado com os filtros selecionados.")
         st.stop()
@@ -314,7 +454,7 @@ if df is not None:
             st.markdown(f"""
             <div class="metric-card">
                 <p class="metric-value">{registros:,}</p>
-                <p class="metric-label">Total de Registros</p>
+                <p class="metric-label">Registros</p>
             </div>
             """, unsafe_allow_html=True)
     
@@ -327,25 +467,21 @@ if df is not None:
         if coluna_valor and coluna_categoria:
             st.markdown(f"### 📊 {coluna_valor} por {coluna_categoria}")
             
-            # Agrupar dados por categoria
-            df_grouped = df_filtrado.groupby(coluna_categoria)[coluna_valor].sum().reset_index()
-            df_grouped = df_grouped.sort_values(coluna_valor, ascending=False).head(10)
-            
-            # Criar gráfico
+            # Preparar dados para gráfico
             if coluna_subcategoria:
-                # Gráfico agrupado por subcategoria
-                df_grouped_sub = df_filtrado.groupby([coluna_categoria, coluna_subcategoria])[coluna_valor].sum().reset_index()
+                df_chart = df_filtrado.groupby([coluna_categoria, coluna_subcategoria])[coluna_valor].sum().reset_index()
                 fig = px.bar(
-                    df_grouped_sub.head(20),
+                    df_chart.head(20),
                     x=coluna_categoria,
                     y=coluna_valor,
                     color=coluna_subcategoria,
                     title=f"{coluna_valor} por {coluna_categoria} e {coluna_subcategoria}"
                 )
             else:
-                # Gráfico simples
+                df_chart = df_filtrado.groupby(coluna_categoria)[coluna_valor].sum().reset_index()
+                df_chart = df_chart.sort_values(coluna_valor, ascending=False).head(10)
                 fig = px.bar(
-                    df_grouped,
+                    df_chart,
                     x=coluna_categoria,
                     y=coluna_valor,
                     title=f"Top 10 {coluna_categoria} por {coluna_valor}"
@@ -353,111 +489,139 @@ if df is not None:
             
             fig.update_layout(
                 height=400,
-                showlegend=True,
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)'
             )
             
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("🔧 Configure as colunas na barra lateral para ver os gráficos")
+            st.info("🔧 Configure as colunas na barra lateral para ver gráficos")
     
     with col_right:
         if coluna_categoria and coluna_valor:
-            st.markdown(f"### 📋 Top {coluna_categoria}")
+            st.markdown(f"### 📋 Ranking {coluna_categoria}")
             
-            # Criar tabela de ranking
             df_ranking = df_filtrado.groupby(coluna_categoria)[coluna_valor].agg(['sum', 'count']).reset_index()
             df_ranking.columns = [coluna_categoria, 'Total', 'Quantidade']
-            df_ranking = df_ranking.sort_values('Total', ascending=False).head(15)
-            df_ranking['Ranking'] = range(1, len(df_ranking) + 1)
-            
-            # Formatar valores
-            df_ranking['Total Formatado'] = df_ranking['Total'].apply(lambda x: f"{x:,.0f}")
+            df_ranking = df_ranking.sort_values('Total', ascending=False).head(10)
+            df_ranking['Pos'] = range(1, len(df_ranking) + 1)
+            df_ranking['Total_fmt'] = df_ranking['Total'].apply(lambda x: f"{x:,.0f}")
             
             st.dataframe(
-                df_ranking[['Ranking', coluna_categoria, 'Total Formatado', 'Quantidade']].rename(columns={
-                    'Total Formatado': f'Total {coluna_valor}',
-                    'Quantidade': 'Qtd Registros'
+                df_ranking[['Pos', coluna_categoria, 'Total_fmt', 'Quantidade']].rename(columns={
+                    'Pos': '#',
+                    'Total_fmt': f'Total {coluna_valor}',
+                    'Quantidade': 'Qtd'
                 }),
                 use_container_width=True,
                 hide_index=True,
                 height=400
             )
     
-    # Tabela detalhada
+    # Dados detalhados
     st.markdown("### 📝 Dados Detalhados")
     
-    # Opções de exibição
+    # Configurações de exibição
     col_config1, col_config2 = st.columns([1, 3])
-    
     with col_config1:
-        num_registros = st.selectbox(
-            "Registros para exibir:",
-            [50, 100, 200, 500, "Todos"],
+        num_linhas = st.selectbox(
+            "Linhas a exibir:",
+            [50, 100, 200, "Todas"],
             index=0
         )
     
-    # Mostrar dados
-    if num_registros == "Todos":
+    # Exibir tabela
+    if num_linhas == "Todas":
         df_display = df_filtrado
     else:
-        df_display = df_filtrado.head(num_registros)
+        df_display = df_filtrado.head(num_linhas)
     
-    st.dataframe(
-        df_display,
-        use_container_width=True,
-        height=400
-    )
+    st.dataframe(df_display, use_container_width=True, height=400)
     
-    # Informações adicionais
+    # Informações do rodapé
     st.markdown("---")
-    col_info1, col_info2, col_info3 = st.columns(3)
+    col1, col2, col3 = st.columns(3)
     
-    with col_info1:
-        st.markdown(f"**📊 Registros filtrados:** {len(df_filtrado):,}")
+    with col1:
+        st.markdown(f"**📊 Total de registros:** {len(df_filtrado):,}")
     
-    with col_info2:
-        st.markdown(f"**📁 Arquivo:** {uploaded_file.name if uploaded_file else 'Dados de exemplo'}")
-    
-    with col_info3:
+    with col2:
         st.markdown(f"**🔄 Última atualização:** {datetime.now().strftime('%d/%m/%Y %H:%M')}")
     
-    # Instruções
-    with st.expander("ℹ️ Como usar este dashboard"):
-        st.markdown("""
-        ### 📋 **Como usar:**
-        
-        1. **📁 Upload de arquivo:**
-           - Clique no botão de upload no topo da página
-           - Selecione seu arquivo CSV ou Excel
-           - O dashboard detectará automaticamente os tipos de colunas
-        
-        2. **⚙️ Configurações:**
-           - Use a barra lateral para selecionar as colunas principais
-           - **Coluna de Valor:** Dados numéricos para análise (ex: vendas, receita)
-           - **Coluna de Categoria:** Dimensão para agrupar dados (ex: produto, região)
-           - **Subcategoria:** Segunda dimensão opcional
-        
-        3. **🔍 Filtros:**
-           - Use os filtros na barra lateral para segmentar os dados
-           - Os gráficos e tabelas se atualizam automaticamente
-        
-        4. **📊 Visualizações:**
-           - **Métricas principais:** Resumo dos dados filtrados
-           - **Gráfico de barras:** Distribuição por categoria
-           - **Tabela de ranking:** Top categorias ordenadas
-           - **Dados detalhados:** Tabela completa com filtros aplicados
-        
-        ### 📝 **Formatos suportados:**
-        - **CSV:** Separado por vírgula ou ponto-e-vírgula
-        - **Excel:** Formatos .xlsx e .xls
-        
-        ### 💡 **Dicas:**
-        - Para melhores resultados, organize seus dados com cabeçalhos claros
-        - Dados numéricos devem estar em formato número (sem texto)
-        - Datas devem estar em formato reconhecível (DD/MM/YYYY ou YYYY-MM-DD)
-        """)
+    with col3:
+        if config and config.get('method') == 'credentials':
+            st.markdown("**✅ Conectado via API**")
+        else:
+            st.markdown("**📋 Dados de exemplo**")
 
-else:
-    st.error("❌ Erro ao carregar dados. Tente novamente.")
+# Instruções de uso
+with st.expander("📋 Como configurar Google Sheets"):
+    st.markdown("""
+    ## 🔧 **Configuração Completa - Passo a Passo**
+    
+    ### **Método 1: Credenciais JSON (Recomendado)**
+    
+    #### **1. Google Cloud Console:**
+    1. Acesse [console.cloud.google.com](https://console.cloud.google.com/)
+    2. Crie um projeto novo ou selecione existente
+    3. No menu lateral: **APIs e serviços** → **Biblioteca**
+    4. Ative as APIs:
+       - **Google Sheets API**
+       - **Google Drive API**
+    
+    #### **2. Criar Conta de Serviço:**
+    1. **APIs e serviços** → **Credenciais**
+    2. **Criar credenciais** → **Conta de serviço**
+    3. Preencha nome e descrição
+    4. Clique na conta criada
+    5. **Chaves** → **Adicionar chave** → **JSON**
+    6. Faça download do arquivo JSON
+    
+    #### **3. Configurar Planilha:**
+    1. Abra sua planilha no Google Sheets
+    2. Clique **Compartilhar**
+    3. Adicione o email da conta de serviço (está no arquivo JSON)
+    4. Dê permissão de **Editor** ou **Visualizador**
+    
+    #### **4. No Dashboard:**
+    1. Faça upload do arquivo JSON
+    2. Cole a URL da planilha
+    3. Defina o nome da aba
+    
+    ---
+    
+    ### **Método 2: URL Pública (Mais Simples)**
+    
+    #### **1. Tornar Planilha Pública:**
+    1. Abra sua planilha
+    2. **Compartilhar** → **Alterar para qualquer pessoa com o link**
+    3. Permissão: **Visualizador**
+    4. Copie a URL
+    
+    #### **2. No Dashboard:**
+    1. Cole a URL pública
+    2. Defina o nome da aba
+    
+    ---
+    
+    ## 📊 **Estrutura Recomendada da Planilha**
+    
+    ```
+    | Data       | Categoria | Produto   | Região | Valor | Quantidade | Responsável |
+    |------------|-----------|-----------|--------|-------|------------|-------------|
+    | 2024-01-15 | Vendas    | Produto A | Norte  | 1500  | 10         | João        |
+    | 2024-01-16 | Marketing | Produto B | Sul    | 2000  | 15         | Maria       |
+    ```
+    
+    ### **💡 Dicas importantes:**
+    - **Primeira linha** deve conter os cabeçalhos
+    - **Datas** em formato YYYY-MM-DD ou DD/MM/YYYY
+    - **Números** sem texto (apenas números)
+    - **Evite** células mescladas
+    - **Use** nomes claros para as colunas
+    
+    ### **🔄 Atualização Automática:**
+    - Os dados são atualizados automaticamente a cada 5 minutos
+    - Use o botão **"Atualizar Dados"** para forçar atualização
+    - Qualquer mudança na planilha aparece no dashboard
+    """)
