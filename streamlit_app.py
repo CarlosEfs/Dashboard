@@ -158,7 +158,7 @@ if sheets_url:
 # Se não conseguir, mostrar dados de exemplo
 if df is None:
     if sheets_url:
-        st.error("❌ Não foi possível conectar. Verifique se a planilha está pública.")
+        st.error("Não foi possível conectar. Verifique se a planilha está pública.")
     
     st.info("📋 Usando dados de exemplo (similar aos seus dados)")
     df = gerar_dados_exemplo()
