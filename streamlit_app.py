@@ -352,8 +352,8 @@ if df is not None and not df.empty:
             mime="text/csv",
             help=f"Baixar {len(df_filtrado)} registros filtrados"
         )
-            
-      with col_ctrl3:
+    
+    with col_ctrl3:
         # Info sobre os filtros aplicados
         filtros_ativos = []
         if meses_selecionados and len(meses_selecionados) < len(df['Mês'].unique() if 'Mês' in df.columns else []):
