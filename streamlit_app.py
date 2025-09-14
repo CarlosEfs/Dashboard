@@ -389,9 +389,9 @@ with st.expander("❓ Como usar os filtros"):
     - **Baixe o CSV** com os filtros aplicados
     
     ### **3. Exemplo prático:**
-    - Quer ver só **Fevereiro e Março**? ✅ Selecione apenas esses meses
-    - Quer ver só **categoria "Lei"**? ✅ Selecione apenas "Lei"  
-    - Quer ver só posts da **Vanessa**? ✅ Selecione apenas "Vanessa"
+    - Quer ver só **S1 e S2 de Fevereiro**? ✅ Selecione S1+S2 e Fevereiro
+    - Quer ver só **período S4** de **categoria "Lei"**? ✅ Selecione S4 + Lei  
+    - Quer ver só posts da **Vanessa no S3**? ✅ Selecione S3 + Vanessa
     
     ### **4. Status dos filtros:**
     - Aparece um **box verde** quando filtros estão ativos
@@ -401,3 +401,5 @@ with st.expander("❓ Como usar os filtros"):
     **AGORA OS FILTROS SÃO MUITO MAIS SIMPLES E FUNCIONAM MESMO!** 🎉
     """)
 
+else:
+    st.error("❌ Não foi possível carregar os dados.")")
