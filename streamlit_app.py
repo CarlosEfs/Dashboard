@@ -299,9 +299,9 @@ with col_left:
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
         font=dict(size=12)
+        yaxis=dict(tickformat=".2s")
     )
     
-    fig.update_yaxis(tickformat=".2s")
     st.plotly_chart(fig, use_container_width=True)
 
 with col_right:
