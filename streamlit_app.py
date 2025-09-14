@@ -1,30 +1,35 @@
-
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import numpy as np
 from datetime import datetime, timedelta
 import random
 
+# Tentar importar plotly com tratamento de erro
+try:
+    import plotly.express as px
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    PLOTLY_AVAILABLE = False
+    st.error("⚠️ Plotly não está instalado. Instale com: pip install plotly")
+    st.stop()
+
 # Configuração da página
 st.set_page_config(
-    page_title="Relatório Analytics",
+    page_title="Dashboard Analytics",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 # CSS personalizado para replicar o estilo Looker
 st.markdown("""
 <style>
-    /* Estilo geral */
     .main > div {
         padding-top: 2rem;
     }
     
-    /* Header estilo Looker */
     .header-container {
         background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
         padding: 1.5rem 2rem;
@@ -47,7 +52,6 @@ st.markdown("""
         color: white;
     }
     
-    /* Filtros estilo dropdown */
     .filter-container {
         background-color: #f8f9fa;
         padding: 1rem 2rem;
@@ -56,7 +60,6 @@ st.markdown("""
         border: 1px solid #e9ecef;
     }
     
-    /* Cartões de métricas */
     .metric-card {
         background-color: white;
         padding: 1.5rem;
@@ -79,18 +82,21 @@ st.markdown("""
         margin: 0.5rem 0 0 0;
     }
     
-    /* Estilo das tabelas */
+    .upload-section {
+        background-color: #e3f2fd;
+        padding: 2rem;
+        border-radius: 8px;
+        margin-bottom: 2rem;
+        border: 2px dashed #2196f3;
+        text-align: center;
+    }
+    
     .stDataFrame {
         border: 1px solid #e9ecef;
         border-radius: 8px;
         overflow: hidden;
     }
     
-    .stDataFrame > div {
-        border-radius: 8px;
-    }
-    
-    /* Gráficos */
     .chart-container {
         background-color: white;
         padding: 1rem;
@@ -98,294 +104,360 @@ st.markdown("""
         border: 1px solid #e9ecef;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
-    
-    /* Remover padding extra */
-    .element-container {
-        margin-bottom: 1rem;
-    }
 </style>
 """, unsafe_allow_html=True)
 
-# Função para gerar dados de exemplo (similar ao dashboard mostrado)
+# Função para carregar dados de exemplo
 @st.cache_data
-def gerar_dados_analytics():
-    """Gera dados de exemplo para dashboard analytics"""
+def gerar_dados_exemplo():
+    """Gera dados de exemplo quando não há arquivo carregado"""
     np.random.seed(42)
+    random.seed(42)
     
-    # Categorias (similar ao mostrado na imagem)
-    categorias = [
-        'Cidades', 'Curiosidades Gerais', 'Notícias', 'Saúde/Bem Estar',
-        'Carros/Motos', 'Jardinagem', 'Filmes/Séries/TV', 'Astrologia',
-        'Esportes', 'Tecnologia', 'Economia', 'Política', 'Entretenimento'
-    ]
-    
-    sites = [
-        'Em Foco', 'Terra Br', 'CB Radar', 'Uni Not', 'Tupi FM',
-        'G1 Notícias', 'UOL', 'R7', 'Globo', 'Band'
-    ]
-    
-    gerentes = ['Gabriel', 'Vanessa', 'Núbia', 'Guilherme', 'Ana', 'Carlos']
-    
-    # Dados de pageviews por categoria
-    dados_categoria = []
-    for i, categoria in enumerate(categorias):
-        pageviews = random.randint(1000000, 100000000)
-        dados_categoria.append({
-            'rank': i + 1,
-            'categoria': categoria,
-            'pageviews': pageviews
+    data = []
+    for i in range(1000):
+        data.append({
+            'data': datetime.now() - timedelta(days=random.randint(0, 365)),
+            'categoria': random.choice(['Tecnologia', 'Vendas', 'Marketing', 'RH', 'Financeiro']),
+            'produto': random.choice(['Produto A', 'Produto B', 'Produto C', 'Produto D']),
+            'regiao': random.choice(['Norte', 'Sul', 'Leste', 'Oeste', 'Centro']),
+            'valor': random.uniform(100, 10000),
+            'quantidade': random.randint(1, 100),
+            'responsavel': random.choice(['João', 'Maria', 'Pedro', 'Ana', 'Carlos'])
         })
     
-    df_categorias = pd.DataFrame(dados_categoria)
+    return pd.DataFrame(data)
+
+# Função para processar arquivo carregado
+def processar_arquivo(arquivo):
+    """Processa arquivo CSV ou Excel carregado"""
+    try:
+        if arquivo.name.endswith('.csv'):
+            df = pd.read_csv(arquivo, encoding='utf-8')
+        elif arquivo.name.endswith(('.xlsx', '.xls')):
+            df = pd.read_excel(arquivo)
+        else:
+            st.error("⚠️ Formato não suportado. Use arquivos .csv, .xlsx ou .xls")
+            return None
+            
+        return df
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar arquivo: {str(e)}")
+        return None
+
+# Função para detectar colunas por tipo
+def detectar_colunas(df):
+    """Detecta automaticamente os tipos de colunas"""
+    colunas_numericas = df.select_dtypes(include=[np.number]).columns.tolist()
+    colunas_data = []
+    colunas_texto = []
     
-    # Dados detalhados de posts
-    dados_posts = []
-    for i in range(200):  # 200 posts de exemplo
-        site = random.choice(sites)
-        categoria = random.choice(categorias)
-        gerente = random.choice(gerentes)
-        
-        # Simular título de post
-        titulos = [
-            f"economia/2025/05/03/fim-de-linha-de-almoco-com-nova-lei-trabalhista",
-            f"noticias/2025/brasil-se-despede-de-fabio-de-mello-aos-61-anos",
-            f"curiosidades/2025/06/02/grande-rede-de-varejo-falida-fecha-todas-lojas",
-            f"saude/2025/o-que-significa-quando-lagartixa-estao-aparecendo-em-casa",
-            f"entretenimento/2025/12-nomes-femininos-vintage-dos-anos-50",
-            f"tecnologia/2025/05/11/escala-de-trabalho-4x3-foi-aprovada"
-        ]
-        
-        link_post = random.choice(titulos) + f"-{i}"
-        pageviews = random.randint(100000, 10000000)
-        
-        dados_posts.append({
-            'link_post': link_post,
-            'categoria': categoria,
-            'site': site,
-            'gerente': gerente,
-            'pageviews': pageviews,
-            'data': datetime.now() - timedelta(days=random.randint(1, 365))
-        })
+    for col in df.columns:
+        # Tentar detectar colunas de data
+        if df[col].dtype == 'object':
+            try:
+                pd.to_datetime(df[col].head(10))
+                colunas_data.append(col)
+            except:
+                colunas_texto.append(col)
     
-    df_posts = pd.DataFrame(dados_posts)
-    
-    # Dados para o gráfico de barras (Pageviews por Site e Gerente)
-    dados_grafico = []
-    for site in sites[:4]:  # Top 4 sites
-        for gerente in gerentes[:4]:  # Top 4 gerentes
-            pageviews = random.randint(10000000, 100000000)
-            dados_grafico.append({
-                'site': site,
-                'gerente': gerente,
-                'pageviews': pageviews
-            })
-    
-    df_grafico = pd.DataFrame(dados_grafico)
-    
-    return df_categorias, df_posts, df_grafico
+    return colunas_numericas, colunas_data, colunas_texto
 
 # Header principal
 st.markdown("""
 <div class="header-container">
-    <h1 class="header-title">📊 Relatório Analytics</h1>
-    <p class="header-subtitle">Dashboard de Performance - Pageviews e Engajamento</p>
+    <h1 class="header-title">📊 Dashboard Analytics Personalizado</h1>
+    <p class="header-subtitle">Importe seus dados CSV/Excel e crie visualizações interativas</p>
 </div>
 """, unsafe_allow_html=True)
 
-# Carregar dados
-df_categorias, df_posts, df_grafico = gerar_dados_analytics()
+# Seção de upload de arquivo
+st.markdown('<div class="upload-section">', unsafe_allow_html=True)
+st.markdown("### 📁 Importar Dados")
+st.markdown("Faça upload do seu arquivo CSV ou Excel para começar a análise")
 
-# Filtros no topo (estilo Looker)
-st.markdown('<div class="filter-container">', unsafe_allow_html=True)
-col_filtro1, col_filtro2, col_filtro3, col_filtro4 = st.columns([2, 2, 2, 6])
-
-with col_filtro1:
-    periodo_selecionado = st.selectbox(
-        "📅 Período",
-        ["Últimos 7 dias", "Últimos 30 dias", "Últimos 90 dias", "Último ano"],
-        index=2
-    )
-
-with col_filtro2:
-    sites_unicos = df_posts['site'].unique()
-    site_selecionado = st.selectbox(
-        "🌐 Site",
-        ["Todos os sites"] + list(sites_unicos)
-    )
-
-with col_filtro3:
-    gerentes_unicos = df_posts['gerente'].unique()
-    gerente_selecionado = st.selectbox(
-        "👤 Gerentes",
-        ["Todos os gerentes"] + list(gerentes_unicos)
-    )
-
+uploaded_file = st.file_uploader(
+    "Escolha seu arquivo",
+    type=['csv', 'xlsx', 'xls'],
+    help="Suporte para arquivos CSV, XLSX e XLS"
+)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Métricas principais
-total_pageviews = df_posts['pageviews'].sum()
-total_posts = len(df_posts)
-media_pageviews = df_posts['pageviews'].mean()
+# Carregar dados
+if uploaded_file is not None:
+    df = processar_arquivo(uploaded_file)
+    if df is not None:
+        st.success(f"✅ Arquivo '{uploaded_file.name}' carregado com sucesso!")
+        st.info(f"📊 Dados carregados: {len(df)} linhas e {len(df.columns)} colunas")
+else:
+    df = gerar_dados_exemplo()
+    st.info("📋 Usando dados de exemplo. Faça upload do seu arquivo para usar dados reais.")
 
-col_metric1, col_metric2, col_metric3, col_metric4 = st.columns(4)
-
-with col_metric1:
-    st.markdown(f"""
-    <div class="metric-card">
-        <p class="metric-value">{total_pageviews:,}</p>
-        <p class="metric-label">Total Pageviews</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col_metric2:
-    st.markdown(f"""
-    <div class="metric-card">
-        <p class="metric-value">{total_posts:,}</p>
-        <p class="metric-label">Total de Posts</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col_metric3:
-    st.markdown(f"""
-    <div class="metric-card">
-        <p class="metric-value">{media_pageviews:,.0f}</p>
-        <p class="metric-label">Média por Post</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col_metric4:
-    st.markdown(f"""
-    <div class="metric-card">
-        <p class="metric-value">{len(df_posts['categoria'].unique())}</p>
-        <p class="metric-label">Categorias Ativas</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-# Layout principal com duas colunas
-col_left, col_right = st.columns([1.5, 1])
-
-with col_left:
-    # Gráfico de Pageviews por Site e Gerente
-    st.markdown("### 📊 Pageviews por Site e Gerente")
+if df is not None:
+    # Detectar tipos de colunas
+    cols_numericas, cols_data, cols_texto = detectar_colunas(df)
     
-    # Preparar dados para o gráfico
-    df_grouped = df_grafico.groupby(['gerente', 'site'])['pageviews'].sum().reset_index()
-    
-    # Cores para diferentes gerentes
-    cores = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD']
-    
-    fig = go.Figure()
-    
-    gerentes_graf = df_grouped['gerente'].unique()
-    for i, gerente in enumerate(gerentes_graf):
-        df_gerente = df_grouped[df_grouped['gerente'] == gerente]
-        fig.add_trace(go.Bar(
-            name=gerente,
-            x=df_gerente['site'],
-            y=df_gerente['pageviews'],
-            marker_color=cores[i % len(cores)],
-            hovertemplate=f"<b>{gerente}</b><br>%{{x}}<br>%{{y:,.0f}} pageviews<extra></extra>"
-        ))
-    
-    fig.update_layout(
-        barmode='group',
-        height=400,
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        xaxis_title="Sites",
-        yaxis_title="Pageviews",
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        font=dict(size=12)
-        yaxis=dict(tickformat=".2s")
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
+    # Mostrar preview dos dados
+    with st.expander("👀 Visualizar dados carregados", expanded=False):
+        st.dataframe(df.head(10), use_container_width=True)
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.write("**Colunas Numéricas:**")
+            for col in cols_numericas:
+                st.write(f"• {col}")
+        
+        with col2:
+            st.write("**Colunas de Data:**")
+            for col in cols_data:
+                st.write(f"• {col}")
+        
+        with col3:
+            st.write("**Colunas de Texto:**")
+            for col in cols_texto:
+                st.write(f"• {col}")
 
-with col_right:
-    # Tabela de Categorias (estilo da imagem)
-    st.markdown("### 📈 Top Categorias por Pageviews")
+    # Sidebar com configurações
+    st.sidebar.header("⚙️ Configurações do Dashboard")
     
-    # Preparar dados da tabela
-    df_cat_display = df_categorias.copy()
-    df_cat_display['Pageviews'] = df_cat_display['pageviews'].apply(lambda x: f"{x:,}")
+    # Seleção de colunas para análise
+    if cols_numericas:
+        coluna_valor = st.sidebar.selectbox(
+            "💰 Coluna de Valor Principal",
+            cols_numericas,
+            help="Selecione a coluna numérica principal para análise"
+        )
+    else:
+        st.sidebar.warning("⚠️ Nenhuma coluna numérica encontrada")
+        coluna_valor = None
     
-    # Mostrar tabela estilizada
+    if cols_texto:
+        coluna_categoria = st.sidebar.selectbox(
+            "📊 Coluna de Categoria",
+            cols_texto,
+            help="Selecione a coluna para agrupar os dados"
+        )
+    else:
+        coluna_categoria = None
+    
+    if len(cols_texto) > 1:
+        coluna_subcategoria = st.sidebar.selectbox(
+            "🏷️ Coluna de Subcategoria (Opcional)",
+            ["Nenhuma"] + cols_texto,
+            help="Selecione uma segunda dimensão para análise"
+        )
+        if coluna_subcategoria == "Nenhuma":
+            coluna_subcategoria = None
+    else:
+        coluna_subcategoria = None
+    
+    # Filtros dinâmicos
+    st.sidebar.markdown("### 🔍 Filtros")
+    
+    filtros_ativos = {}
+    for col in cols_texto[:3]:  # Primeiras 3 colunas de texto para filtros
+        valores_unicos = df[col].unique()
+        if len(valores_unicos) <= 50:  # Só mostrar filtro se não tiver muitas opções
+            valores_selecionados = st.sidebar.multiselect(
+                f"Filtrar por {col}",
+                valores_unicos,
+                default=valores_unicos
+            )
+            filtros_ativos[col] = valores_selecionados
+
+    # Aplicar filtros
+    df_filtrado = df.copy()
+    for col, valores in filtros_ativos.items():
+        if valores:  # Se há valores selecionados
+            df_filtrado = df_filtrado[df_filtrado[col].isin(valores)]
+    
+    # Verificar se há dados após filtros
+    if df_filtrado.empty:
+        st.warning("⚠️ Nenhum dado encontrado com os filtros selecionados.")
+        st.stop()
+    
+    # Métricas principais
+    if coluna_valor:
+        st.markdown("### 📈 Métricas Principais")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            total = df_filtrado[coluna_valor].sum()
+            st.markdown(f"""
+            <div class="metric-card">
+                <p class="metric-value">{total:,.0f}</p>
+                <p class="metric-label">Total {coluna_valor}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            media = df_filtrado[coluna_valor].mean()
+            st.markdown(f"""
+            <div class="metric-card">
+                <p class="metric-value">{media:,.0f}</p>
+                <p class="metric-label">Média {coluna_valor}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            maximo = df_filtrado[coluna_valor].max()
+            st.markdown(f"""
+            <div class="metric-card">
+                <p class="metric-value">{maximo:,.0f}</p>
+                <p class="metric-label">Máximo {coluna_valor}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col4:
+            registros = len(df_filtrado)
+            st.markdown(f"""
+            <div class="metric-card">
+                <p class="metric-value">{registros:,}</p>
+                <p class="metric-label">Total de Registros</p>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Layout principal
+    col_left, col_right = st.columns([1.5, 1])
+    
+    with col_left:
+        if coluna_valor and coluna_categoria:
+            st.markdown(f"### 📊 {coluna_valor} por {coluna_categoria}")
+            
+            # Agrupar dados por categoria
+            df_grouped = df_filtrado.groupby(coluna_categoria)[coluna_valor].sum().reset_index()
+            df_grouped = df_grouped.sort_values(coluna_valor, ascending=False).head(10)
+            
+            # Criar gráfico
+            if coluna_subcategoria:
+                # Gráfico agrupado por subcategoria
+                df_grouped_sub = df_filtrado.groupby([coluna_categoria, coluna_subcategoria])[coluna_valor].sum().reset_index()
+                fig = px.bar(
+                    df_grouped_sub.head(20),
+                    x=coluna_categoria,
+                    y=coluna_valor,
+                    color=coluna_subcategoria,
+                    title=f"{coluna_valor} por {coluna_categoria} e {coluna_subcategoria}"
+                )
+            else:
+                # Gráfico simples
+                fig = px.bar(
+                    df_grouped,
+                    x=coluna_categoria,
+                    y=coluna_valor,
+                    title=f"Top 10 {coluna_categoria} por {coluna_valor}"
+                )
+            
+            fig.update_layout(
+                height=400,
+                showlegend=True,
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)'
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("🔧 Configure as colunas na barra lateral para ver os gráficos")
+    
+    with col_right:
+        if coluna_categoria and coluna_valor:
+            st.markdown(f"### 📋 Top {coluna_categoria}")
+            
+            # Criar tabela de ranking
+            df_ranking = df_filtrado.groupby(coluna_categoria)[coluna_valor].agg(['sum', 'count']).reset_index()
+            df_ranking.columns = [coluna_categoria, 'Total', 'Quantidade']
+            df_ranking = df_ranking.sort_values('Total', ascending=False).head(15)
+            df_ranking['Ranking'] = range(1, len(df_ranking) + 1)
+            
+            # Formatar valores
+            df_ranking['Total Formatado'] = df_ranking['Total'].apply(lambda x: f"{x:,.0f}")
+            
+            st.dataframe(
+                df_ranking[['Ranking', coluna_categoria, 'Total Formatado', 'Quantidade']].rename(columns={
+                    'Total Formatado': f'Total {coluna_valor}',
+                    'Quantidade': 'Qtd Registros'
+                }),
+                use_container_width=True,
+                hide_index=True,
+                height=400
+            )
+    
+    # Tabela detalhada
+    st.markdown("### 📝 Dados Detalhados")
+    
+    # Opções de exibição
+    col_config1, col_config2 = st.columns([1, 3])
+    
+    with col_config1:
+        num_registros = st.selectbox(
+            "Registros para exibir:",
+            [50, 100, 200, 500, "Todos"],
+            index=0
+        )
+    
+    # Mostrar dados
+    if num_registros == "Todos":
+        df_display = df_filtrado
+    else:
+        df_display = df_filtrado.head(num_registros)
+    
     st.dataframe(
-        df_cat_display[['rank', 'categoria', 'Pageviews']].rename(columns={
-            'rank': '#',
-            'categoria': 'Categoria',
-            'Pageviews': 'Pageviews'
-        }),
+        df_display,
         use_container_width=True,
-        hide_index=True,
         height=400
     )
-
-# Tabela detalhada de posts (parte inferior)
-st.markdown("### 📝 Detalhamento de Posts")
-
-# Filtrar dados baseado nas seleções
-df_posts_filtrado = df_posts.copy()
-
-if site_selecionado != "Todos os sites":
-    df_posts_filtrado = df_posts_filtrado[df_posts_filtrado['site'] == site_selecionado]
-
-if gerente_selecionado != "Todos os gerentes":
-    df_posts_filtrado = df_posts_filtrado[df_posts_filtrado['gerente'] == gerente_selecionado]
-
-# Ordenar por pageviews (descendente)
-df_posts_filtrado = df_posts_filtrado.sort_values('pageviews', ascending=False)
-
-# Preparar dados para exibição
-df_display = df_posts_filtrado.head(50).copy()  # Top 50 posts
-df_display['Pageviews'] = df_display['pageviews'].apply(lambda x: f"{x:,}")
-df_display['Data'] = df_display['data'].dt.strftime('%d/%m/%Y')
-
-# Adicionar numeração
-df_display.reset_index(drop=True, inplace=True)
-df_display.index = df_display.index + 1
-
-# Mostrar tabela
-st.dataframe(
-    df_display[['link_post', 'categoria', 'site', 'Pageviews']].rename(columns={
-        'link_post': 'Link do Post',
-        'categoria': 'Categoria',
-        'site': 'Site',
-        'Pageviews': 'Pageviews'
-    }),
-    use_container_width=True,
-    height=400
-)
-
-# Footer com informações adicionais
-st.markdown("---")
-col_footer1, col_footer2, col_footer3 = st.columns(3)
-
-with col_footer1:
-    st.markdown(f"**📊 Total de registros:** {len(df_posts_filtrado):,}")
-
-with col_footer2:
-    st.markdown(f"**🔥 Maior pageview:** {df_posts_filtrado['pageviews'].max():,}")
-
-with col_footer3:
-    st.markdown(f"**📅 Última atualização:** {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-
-# Instruções para uso
-with st.expander("ℹ️ Como usar este dashboard"):
-    st.markdown("""
-    **Filtros disponíveis:**
-    - **Período:** Filtra os dados por intervalo de tempo
-    - **Site:** Filtra por site específico ou todos os sites
-    - **Gerentes:** Filtra por gerente específico ou todos os gerentes
     
-    **Visualizações:**
-    - **Gráfico de barras:** Mostra pageviews agrupados por site e gerente
-    - **Tabela de categorias:** Ranking das categorias mais acessadas
-    - **Tabela de posts:** Lista detalhada dos posts com maior engajamento
+    # Informações adicionais
+    st.markdown("---")
+    col_info1, col_info2, col_info3 = st.columns(3)
     
-    **Métricas principais:**
-    - Total de pageviews, posts, média por post e categorias ativas
-    """)
+    with col_info1:
+        st.markdown(f"**📊 Registros filtrados:** {len(df_filtrado):,}")
+    
+    with col_info2:
+        st.markdown(f"**📁 Arquivo:** {uploaded_file.name if uploaded_file else 'Dados de exemplo'}")
+    
+    with col_info3:
+        st.markdown(f"**🔄 Última atualização:** {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    
+    # Instruções
+    with st.expander("ℹ️ Como usar este dashboard"):
+        st.markdown("""
+        ### 📋 **Como usar:**
+        
+        1. **📁 Upload de arquivo:**
+           - Clique no botão de upload no topo da página
+           - Selecione seu arquivo CSV ou Excel
+           - O dashboard detectará automaticamente os tipos de colunas
+        
+        2. **⚙️ Configurações:**
+           - Use a barra lateral para selecionar as colunas principais
+           - **Coluna de Valor:** Dados numéricos para análise (ex: vendas, receita)
+           - **Coluna de Categoria:** Dimensão para agrupar dados (ex: produto, região)
+           - **Subcategoria:** Segunda dimensão opcional
+        
+        3. **🔍 Filtros:**
+           - Use os filtros na barra lateral para segmentar os dados
+           - Os gráficos e tabelas se atualizam automaticamente
+        
+        4. **📊 Visualizações:**
+           - **Métricas principais:** Resumo dos dados filtrados
+           - **Gráfico de barras:** Distribuição por categoria
+           - **Tabela de ranking:** Top categorias ordenadas
+           - **Dados detalhados:** Tabela completa com filtros aplicados
+        
+        ### 📝 **Formatos suportados:**
+        - **CSV:** Separado por vírgula ou ponto-e-vírgula
+        - **Excel:** Formatos .xlsx e .xls
+        
+        ### 💡 **Dicas:**
+        - Para melhores resultados, organize seus dados com cabeçalhos claros
+        - Dados numéricos devem estar em formato número (sem texto)
+        - Datas devem estar em formato reconhecível (DD/MM/YYYY ou YYYY-MM-DD)
+        """)
+
+else:
+    st.error("❌ Erro ao carregar dados. Tente novamente.")
