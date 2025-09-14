@@ -352,3 +352,35 @@ if df is not None and not df.empty:
             mime="text/csv",
             help=f"Baixar {len(df_filtrado)} registros filtrados"
         )
+        
+  with col_ctrl3:
+        # Info sobre os filtros aplicados
+        filtros_ativos = []
+        if meses_selecionados and len(meses_selecionados) < len(df['Mês'].unique() if 'Mês' in df.columns else []):
+            filtros_ativos.append(f"Mês: {', '.join(meses_selecionados)}")
+        if categorias_selecionadas and len(categorias_selecionadas) < len(df['Categoria'].unique() if 'Categoria' in df.columns else []):
+            filtros_ativos.append(f"Categoria: {len(categorias_selecionadas)} selecionadas")
+        
+        if filtros_ativos:
+            st.info(f"🔍 Filtros: {' | '.join(filtros_ativos)}")
+    
+    # Mostrar tabela
+    if qtd_mostrar == "Todos":
+        df_mostrar = df_filtrado
+    else:
+        df_mostrar = df_filtrado.head(qtd_mostrar)
+    
+    st.dataframe(df_mostrar, use_container_width=True, height=400)
+    
+    # Footer
+    st.markdown("---")
+    col_footer1, col_footer2, col_footer3 = st.columns(3)
+    
+    with col_footer1:
+        st.write(f"**📊 Total filtrado:** {len(df_filtrado):,} registros")
+    
+    with col_footer2:
+        st.write(f"**🔗 Fonte:** {'Google Sheets' if sheets_url else 'Dados exemplo'}")
+    
+    with col_footer3:
+        st.write(f"**🕒 Atualizado:** {datetime.now().strftime('%H:%M')}")
