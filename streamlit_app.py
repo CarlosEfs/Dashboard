@@ -252,6 +252,9 @@ if df is not None and not df.empty:
         
     if sites_selecionados and 'Site' in df.columns:
         df_filtrado = df_filtrado[df_filtrado['Site'].isin(sites_selecionados)]
+
+    if periodos_selecionados and 'Período' in df.columns:
+    df_filtrado = df_filtrado[df_filtrado['Período'].isin(periodos_selecionados)]
     
     # MOSTRAR STATUS DOS FILTROS
     if len(df_filtrado) != len(df):
