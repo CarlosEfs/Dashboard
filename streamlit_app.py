@@ -225,14 +225,14 @@ if df is not None and not df.empty:
         
     # FILTRO 5: PERÍODO (se existir coluna Período)
     if 'Período' in df.columns:
-    st.sidebar.markdown("### ⏰ Filtrar por Período")
-    periodos_disponíveis = df['Período'].unique().tolist()
-    periodos_selecionados = st.sidebar.multiselect(
-        "Escolha os períodos:",
-        periodos_disponíveis,
-        default=periodos_disponíveis,
-        key="filtro_periodo",
-        help="S1, S2, S3, S4 representam semanas/quinzenas do mês"
+        st.sidebar.markdown("### ⏰ Filtrar por Período")
+        periodos_disponíveis = df['Período'].unique().tolist()
+        periodos_selecionados = st.sidebar.multiselect(
+            "Escolha os períodos:",
+            periodos_disponíveis,
+            default=periodos_disponíveis,
+            key="filtro_periodo",
+            help="S1, S2, S3, S4 representam semanas/quinzenas do mês"
         )
     else:
         periodos_selecionados = []
