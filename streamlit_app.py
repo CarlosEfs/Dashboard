@@ -402,4 +402,4 @@ with st.expander("❓ Como usar os filtros"):
     """)
 
 else:
-    st.error("❌ Não foi possível carregar os dados.
+    st.error("❌ Não foi possível carregar os dados.")")
