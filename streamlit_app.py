@@ -400,6 +400,5 @@ with st.expander("❓ Como usar os filtros"):
     
     **AGORA OS FILTROS SÃO MUITO MAIS SIMPLES E FUNCIONAM MESMO!** 🎉
     """)
-
 else:
     st.error("❌ Não foi possível carregar os dados.")")
